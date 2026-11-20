@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>綠茵世界 MMO：雲端時間回補、每日獎勵與防作弊版</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #0b1120;
+    --card: #1e293b;
+    --card-2: #273549;
+    --accent: #10b981;
+    --accent-hover: #059669;
+    --tp: #38bdf8;
+    --gold: #fbbf24;
+    --text: #f8fafc;
+    --muted: #94a3b8;
+    --border: #334155;
+    --danger: #ef4444;
+  }
+  * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { background: var(--bg); color: var(--text); margin: 0; padding: 18px; display: flex; justify-content: center; }
+  .app { max-width: 1140px; width: 100%; display: grid; gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
+  h1, h2, h3 { margin: 0; }
+  h2 { font-size: 0.92rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+
+  .conn-banner {
+    padding: 10px 16px; border-radius: 10px; font-size: 0.88rem; font-weight: bold;
+    display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;
+    background: rgba(16, 185, 129, 0.14); border: 1px solid var(--accent); color: #34d399;
+  }
+  .conn-banner.offline {
+    background: rgba(239, 68, 68, 0.14); border-color: var(--danger); color: #fca5a5;
+  }
+
+  /* 建角器 */
+  .creator-grid { display: grid; grid-template-columns: 320px 1fr; gap: 20px; }
+  @media (max-width: 820px) { .creator-grid { grid-template-columns: 1fr; } }
+  .stage {
+    background: radial-gradient(circle at 50% 35%, #1e3a8a 0%, #0f172a 75%);
+    border: 2px solid #38bdf8; border-radius: 14px; padding: 16px;
+    display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+  }
+  .player-banner {
+    background: linear-gradient(90deg, #059669, #10b981); color: #052e16;
+    width: 100%; text-align: center; padding: 10px; border-radius: 10px; font-weight: 900;
+  }
+  .ctrl-section { margin-bottom: 12px; }
+  .ctrl-label { display: block; font-size: 0.84rem; font-weight: bold; color: #cbd5e1; margin-bottom: 6px; }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  input[type="text"], input[type="number"] {
+    width: 100%; padding: 9px 12px; border-radius: 8px; border: 1px solid #475569;
+    background: #0f172a; color: white; font-size: 0.95rem;
+  }
+  .chip-group { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chip {
+    padding: 6px 11px; border-radius: 8px; border: 1px solid #475569; background: #0f172a;
+    color: #e2e8f0; cursor: pointer; font-size: 0.83rem; font-weight: 600;
+  }
+  .chip.active { border-color: var(--accent); background: rgba(16, 185, 129, 0.2); color: #34d399; }
+  .swatch { width: 28px; height: 28px; border-radius: 50%; border: 2px solid #475569; cursor: pointer; }
+  .swatch.active { border-color: #fff; transform: scale(1.15); box-shadow: 0 0 0 2px var(--accent); }
+  .btn-primary {
+    width: 100%; padding: 12px; border-radius: 10px; border: none; background: var(--accent);
+    color: #052e16; font-weight: 800; font-size: 1rem; cursor: pointer; transition: 0.15s;
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--accent-hover); color: white; }
+  .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  /* 主遊戲畫面 */
+  #game-screen { display: none; flex-direction: column; gap: 16px; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-left: 5px solid var(--accent); }
+  .avatar-mini { width: 52px; height: 52px; border-radius: 50%; border: 2px solid var(--accent); background: #0f172a; overflow: hidden; }
+  .avatar-table { width: 32px; height: 32px; border-radius: 50%; border: 1px solid #475569; background: #0f172a; overflow: hidden; display: inline-block; vertical-align: middle; margin-right: 8px; }
+  .pill { padding: 6px 12px; border-radius: 999px; font-size: 0.84rem; font-weight: bold; background: #0f172a; border: 1px solid var(--border); }
+  .pill.tp { color: var(--tp); border-color: var(--tp); }
+  .pill.cash { color: var(--gold); border-color: var(--gold); }
+  .pill.starter { background: var(--accent); color: #052e16; border-color: var(--accent); }
+  .pill.sub { background: var(--gold); color: #271700; border-color: var(--gold); }
+  .pill.res { background: #334155; color: #cbd5e1; }
+
+  .daily-bar {
+    background: linear-gradient(90deg, rgba(251, 191, 36, 0.14), rgba(56, 189, 248, 0.12));
+    border: 1px solid rgba(251, 191, 36, 0.45);
+    border-radius: 12px; padding: 12px 16px;
+    display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;
+  }
+  .daily-btn {
+    background: var(--gold); color: #271700; border: none; border-radius: 8px;
+    padding: 8px 14px; font-weight: 800; font-size: 0.88rem; cursor: pointer;
+  }
+  .daily-btn:disabled { background: #334155; color: #94a3b8; cursor: not-allowed; }
+  .regen-tag { font-size: 0.84rem; color: #7dd3fc; font-weight: 600; }
+
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tab-btn { padding: 9px 15px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--muted); font-weight: bold; cursor: pointer; }
+  .tab-btn.active { background: var(--accent); color: #052e16; border-color: var(--accent); }
+
+  .grid-main { display: grid; grid-template-columns: 1.25fr 1fr; gap: 16px; }
+  @media (max-width: 880px) { .grid-main { grid-template-columns: 1fr; } }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+  th, td { padding: 9px 8px; text-align: left; border-bottom: 1px solid #2d3b52; }
+  th { color: var(--muted); font-size: 0.76rem; }
+  tr.me-row { background: rgba(16, 185, 129, 0.14); }
+
+  .action-btn {
+    width: 100%; padding: 10px 12px; border-radius: 8px; border: none; background: var(--card-2);
+    color: var(--text); font-size: 0.88rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+  }
+  .action-btn:hover:not(:disabled) { background: #334155; }
+  .action-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .attr-row { display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 8px 12px; border-radius: 8px; margin-bottom: 8px; }
+  .mini-btn { background: var(--tp); color: #082f49; border: none; border-radius: 6px; padding: 5px 10px; font-weight: bold; cursor: pointer; font-size: 0.8rem; }
+  .mini-btn:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+
+  .log-box {
+    height: 170px; overflow-y: auto; background: #090d16; border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px; font-size: 0.86rem; line-height: 1.55;
+  }
+  .log-good { color: #34d399; }
+  .log-bad { color: #f87171; }
+  .log-gold { color: #fbbf24; font-weight: bold; }
+
+  .shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(225px, 1fr)); gap: 12px; }
+  .gear-card { background: #0f172a; border: 1px solid var(--border); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between; gap: 8px; }
+  .gear-card.equipped { border-color: var(--accent); }
+  .gear-btn { width: 100%; padding: 8px; border-radius: 7px; border: none; font-weight: bold; cursor: pointer; background: var(--gold); color: #271700; }
+  .gear-btn.equip { background: var(--accent); color: #052e16; }
+  .gear-btn:disabled { background: #1e293b; color: #64748b; cursor: not-allowed; }
+
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.86); display: none;
+    justify-content: center; align-items: center; padding: 18px; z-index: 200;
+  }
+  .modal { background: var(--card); max-width: 580px; width: 100%; padding: 24px; border-radius: 14px; border: 2px solid var(--accent); }
+  .choice-card {
+    background: #0f172a; border: 1px solid #475569; border-radius: 10px;
+    padding: 13px 14px; margin-top: 10px; width: 100%; color: white;
+    cursor: pointer; text-align: left; transition: 0.15s;
+  }
+  .choice-card:hover { border-color: var(--accent); background: #172338; }
+  .choice-top { display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 0.98rem; }
+  .choice-sub { font-size: 0.82rem; color: var(--muted); margin-top: 5px; line-height: 1.45; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div id="conn-banner" class="conn-banner offline">
+    <span id="conn-text">⚠️ 尚未填入 Supabase 金鑰，目前為本地模式（填入後即啟用雲端時間校驗與多人同步）</span>
+    <span id="sync-badge">狀態：本地預覽</span>
+  </div>
+
+  <!-- 建角畫面 -->
+  <div id="creator-screen" class="card">
+    <h1 style="font-size: 1.4rem; margin-bottom: 4px;">⚽ 綠茵世界：建立你的卡通足球員</h1>
+    <p style="color: var(--muted); font-size: 0.88rem; margin-top: 0; margin-bottom: 16px;">雲端同步體力回補與每日簽到，防重複領取，並在比賽關鍵抉擇中搶下正選！</p>
+
+    <div class="creator-grid">
+      <div class="stage">
+        <div style="color: var(--accent); font-weight: bold; font-size: 0.85rem;" id="stage-pos">前鋒 (ST) · STAR UNITED</div>
+        <div id="svg-preview" style="width: 225px; height: 300px; margin: 6px 0;"></div>
+        <div class="player-banner" id="stage-banner">#9 陳俊傑 - FORWARD</div>
+      </div>
+
+      <div>
+        <div class="row-2 ctrl-section">
+          <div>
+            <label class="ctrl-label">球員姓名</label>
+            <input type="text" id="inp-name" value="陳俊傑" maxlength="14" oninput="updatePreview()">
+          </div>
+          <div>
+            <label class="ctrl-label">球衣背號</label>
+            <input type="number" id="inp-num" value="9" min="1" max="99" oninput="updatePreview()">
+          </div>
+        </div>
+
+        <div class="ctrl-section">
+          <label class="ctrl-label">場上位置</label>
+          <div class="chip-group">
+            <button class="chip active" onclick="setCfg('pos', 'ST', this)">⚡ 前鋒 (ST)</button>
+            <button class="chip" onclick="setCfg('pos', 'CM', this)">🎯 中場 (CM)</button>
+            <button class="chip" onclick="setCfg('pos', 'CB', this)">🛡️ 後衛 (CB)</button>
+          </div>
+        </div>
+
+        <div class="row-2 ctrl-section">
+          <div>
+            <label class="ctrl-label">髮型</label>
+            <div class="chip-group">
+              <button class="chip active" onclick="setCfg('hair', 'spiky', this)">刺蝟頭</button>
+              <button class="chip" onclick="setCfg('hair', 'parted', this)">中分頭</button>
+              <button class="chip" onclick="setCfg('hair', 'curly', this)">捲髮</button>
+              <button class="chip" onclick="setCfg('hair', 'buzz', this)">寸頭</button>
+            </div>
+          </div>
+          <div>
+            <label class="ctrl-label">表情</label>
+            <div class="chip-group">
+              <button class="chip active" onclick="setCfg('face', 'determined', this)">堅定</button>
+              <button class="chip" onclick="setCfg('face', 'grin', this)">自信笑</button>
+              <button class="chip" onclick="setCfg('face', 'hyped', this)">熱血</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="row-2 ctrl-section">
+          <div>
+            <label class="ctrl-label">膚色</label>
+            <div class="chip-group">
+              <div class="swatch active" style="background:#f8d2b8;" onclick="setCfg('skin', '#f8d2b8', this)"></div>
+              <div class="swatch" style="background:#eab68e;" onclick="setCfg('skin', '#eab68e', this)"></div>
+              <div class="swatch" style="background:#c68656;" onclick="setCfg('skin', '#c68656', this)"></div>
+              <div class="swatch" style="background:#7d4a2b;" onclick="setCfg('skin', '#7d4a2b', this)"></div>
+            </div>
+          </div>
+          <div>
+            <label class="ctrl-label">髮色</label>
+            <div class="chip-group">
+              <div class="swatch active" style="background:#1e293b;" onclick="setCfg('hairColor', '#1e293b', this)"></div>
+              <div class="swatch" style="background:#78350f;" onclick="setCfg('hairColor', '#78350f', this)"></div>
+              <div class="swatch" style="background:#facc15;" onclick="setCfg('hairColor', '#facc15', this)"></div>
+              <div class="swatch" style="background:#ef4444;" onclick="setCfg('hairColor', '#ef4444', this)"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ctrl-section">
+          <label class="ctrl-label">球衣配色</label>
+          <div class="chip-group">
+            <button class="chip active" onclick="setKit('#2563eb', '#10b981', this)">藍綠雙拼</button>
+            <button class="chip" onclick="setKit('#dc2626', '#facc15', this)">紅黃戰袍</button>
+            <button class="chip" onclick="setKit('#f8fafc', '#0f172a', this)">純白黑邊</button>
+          </div>
+        </div>
+
+        <button class="btn-primary" onclick="enterGame()">完成建角並同步雲端 →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 遊戲主畫面 -->
+  <div id="game-screen">
+    <div class="card topbar">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div class="avatar-mini" id="topbar-avatar"></div>
+        <div>
+          <div style="font-size: 1.18rem; font-weight: bold;" id="player-header"></div>
+          <div style="color: var(--muted); font-size: 0.84rem; margin-top: 3px;">
+            第 <span id="round-num">1</span> 輪 | 進球: <span id="goals-val">0</span> | 關鍵助攻: <span id="assists-val">0</span> | 體力: <span id="stamina-val">80</span>/100 | 信任: <span id="trust-val">40</span>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+        <div class="pill cash">💰 $<span id="cash-val">120</span></div>
+        <div class="pill tp">💎 TP: <span id="tp-val">4</span></div>
+        <div class="pill" id="spot-pill">席位判定中</div>
+        <button class="btn-primary" style="width:auto; padding:9px 16px; font-size:0.92rem;" onclick="startMatch()">
+          🏟️ 踢本輪比賽
+        </button>
+      </div>
+    </div>
+
+    <div class="daily-bar">
+      <div>
+        <div style="font-weight: 800; font-size: 0.95rem; color: var(--gold);">
+          🎁 每日簽到獎勵（連續 <span id="streak-val">0</span> 天 · 雲端防重複領取）
+        </div>
+        <div class="regen-tag" id="regen-status" style="margin-top: 3px;">
+          ⏱️ 每 60 秒自動恢復 +5 體力｜下次恢復倒數：01:00
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 0.84rem; color: #e2e8f0;" id="daily-preview">+3 TP / +$30 / +25 體力</span>
+        <button class="daily-btn" id="btn-daily" onclick="claimDailyReward()">領取每日獎勵</button>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" id="tab-room" onclick="switchTab('room')">🏟️ 更衣室、訓練與戰報</button>
+      <button class="tab-btn" id="tab-shop" onclick="switchTab('shop')">👟 球鞋與配件商店</button>
+    </div>
+
+    <div id="view-room" class="grid-main">
+      <div style="display: grid; gap: 16px;">
+        <div class="card">
+          <h2>同隊正選競爭榜（前 2 名獲得正選首發）</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>球員</th>
+                <th>位置</th>
+                <th>總評</th>
+                <th>信任</th>
+                <th>席位</th>
+              </tr>
+            </thead>
+            <tbody id="squad-tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <h2>📋 比賽高光、時間回補與雲端日誌</h2>
+          <div class="log-box" id="log-box"></div>
+        </div>
+      </div>
+
+      <div class="card" style="align-self: start;">
+        <h2>訓練賺 TP / 薪資與自由加點</h2>
+        <button class="action-btn" id="btn-train-hard" onclick="trainHard()">
+          <span>🔥 魔鬼射門與盤帶課 (-25 體力)</span>
+          <strong style="color: var(--tp);">+4 TP / +$40</strong>
+        </button>
+        <button class="action-btn" id="btn-train-pass" onclick="trainPass()">
+          <span>🎯 精準傳球與默契合練 (-15 體力)</span>
+          <strong style="color: var(--tp);">+2 TP / +$25 / +5信任</strong>
+        </button>
+        <button class="action-btn" onclick="restAction()">
+          <span>💤 物理治療與恢復</span>
+          <strong style="color: #34d399;">+35 體力</strong>
+        </button>
+
+        <hr style="border-color: #334155; margin: 14px 0;">
+        <div id="attr-box"></div>
+      </div>
+    </div>
+
+    <div id="view-shop" class="card" style="display: none;">
+      <h2>球鞋與配件商店（穿戴後同步外觀＋少量能力微調）</h2>
+      <div class="shop-grid" id="shop-grid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 比賽關鍵時刻彈窗 -->
+<div class="modal-overlay" id="match-modal">
+  <div class="modal">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <span style="color:var(--accent); font-weight:bold; font-size:0.88rem;" id="m-minute">第 68 分鐘</span>
+      <span style="color:var(--gold); font-weight:bold; font-size:0.85rem;" id="m-progress">關鍵時刻 1 / 2</span>
+    </div>
+    <h3 style="font-size:1.25rem; margin:8px 0;" id="m-title"></h3>
+    <p style="color:#cbd5e1; font-size:0.93rem; line-height:1.55; margin:0 0 12px 0;" id="m-desc"></p>
+    <div id="m-choices"></div>
+  </div>
+</div>
+
+<script>
+  const SUPABASE_URL = '';
+  const SUPABASE_ANON_KEY = '';
+  const sb = (SUPABASE_URL && SUPABASE_ANON_KEY) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+  function getPlayerId() {
+    let pid = localStorage.getItem('football_world_pid');
+    if (!pid) {
+      pid = crypto.randomUUID();
+      localStorage.setItem('football_world_pid', pid);
+    }
+    return pid;
+  }
+  const MY_ID = getPlayerId();
+
+  const REGEN_INTERVAL_MS = 60 * 1000;
+  const REGEN_AMOUNT = 5;
+  const MAX_STAMINA = 100;
+
+  const gearCatalog = [
+    { id: 'boots_flame', slot: 'boots', slotLabel: '球鞋', name: '烈焰戰靴', price: 80, color: '#ef4444', buff: { sho: 2 }, buffText: '射門 +2' },
+    { id: 'boots_gold', slot: 'boots', slotLabel: '球鞋', name: '黃金掠奪者', price: 150, color: '#facc15', buff: { sho: 2, dri: 1 }, buffText: '射門 +2、盤帶 +1' },
+    { id: 'wrist_neon', slot: 'wrist', slotLabel: '護腕', name: '天藍動感護腕', price: 70, color: '#38bdf8', buff: { dri: 2 }, buffText: '盤帶 +2' },
+    { id: 'head_band', slot: 'headband', slotLabel: '頭帶', name: '戰術指揮髮帶', price: 90, color: '#f43f5e', buff: { pas: 2, trust: 2 }, buffText: '傳球 +2、信任 +2' }
+  ];
+
+  const matchMoments = [
+    {
+      title: '反擊推進：禁區前 18 碼！',
+      desc: '隊友斷球後快速推進，你在右肋部拿到球。左側有隊友高速插上形成空檔，但你面前也有不錯的射門角度。',
+      choices: [
+        {
+          type: 'shoot', label: '⚡ 切入禁區起腳勁射', stat: 'sho', diff: 45,
+          desc: '考驗 [射門]｜進球 +$50 薪資與 +7 信任；射偏 -3 信任。',
+          onSuccess: () => { player.goals++; player.cash += 50; player.trust = Math.min(100, player.trust + 7); return '一記勢大力沉的抽射直入死角！(進球+1, +$50, +7信任)'; },
+          onFail: () => { player.trust = Math.max(0, player.trust - 3); return '射門角度太正被門將抱住。( -3信任 )'; }
+        },
+        {
+          type: 'pass', label: '🎯 送出關鍵直塞傳球', stat: 'pas', diff: 38,
+          desc: '考驗 [傳球]｜成功率較穩健，助攻 +$40 薪資與 +9 信任。',
+          onSuccess: () => { player.assists++; player.cash += 40; player.trust = Math.min(100, player.trust + 9); return '精準的關鍵直塞撕開防線，隊友輕鬆推射破門！(助攻+1, +$40, +9信任)'; },
+          onFail: () => { player.trust = Math.max(0, player.trust - 2); return '傳球力量稍重，皮球滑出底線。( -2信任 )'; }
+        }
+      ]
+    },
+    {
+      title: '定位球與邊路傳中時刻！',
+      desc: '比賽來到關鍵階段，你接到邊路傳中。隊友已跑出空檔，但你也有起腳空間。',
+      choices: [
+        {
+          type: 'pass', label: '🤝 關鍵橫傳／擺渡做球', stat: 'pas', diff: 35,
+          desc: '考驗 [傳球]｜穩健提升信任，助攻 +$35 與 +8 信任。',
+          onSuccess: () => { player.assists++; player.cash += 35; player.trust = Math.min(100, player.trust + 8); return '巧妙做球助攻隊友破門！(助攻+1, +$35, +8信任)'; },
+          onFail: () => { player.trust = Math.max(0, player.trust - 1); return '傳球路線被防守球員解圍。( -1信任 )'; }
+        },
+        {
+          type: 'shoot', label: '🔥 把握機會直接凌空射門', stat: 'sho', diff: 48,
+          desc: '考驗 [射門]｜難度較高但高光十足，進球 +$60 與 +10 信任。',
+          onSuccess: () => { player.goals++; player.cash += 60; player.trust = Math.min(100, player.trust + 10); return '精彩凌空抽射破網！(進球+1, +$60, +10信任)'; },
+          onFail: () => { player.trust = Math.max(0, player.trust - 3); return '凌空射門偏出立柱。( -3信任 )'; }
+        }
+      ]
+    }
+  ];
+
+  const player = {
+    id: MY_ID,
+    name: '陳俊傑',
+    number: 9,
+    pos: 'ST',
+    club_id: 'star',
+    round: 1,
+    goals: 0,
+    assists: 0,
+    stamina: 80,
+    trust: 40,
+    tp: 4,
+    cash: 120,
+    sho: 57,
+    pas: 52,
+    dri: 58,
+    owned: [],
+    equipped: { boots: null, wrist: null, headband: null },
+    last_regen_at: new Date().toISOString(),
+    last_daily_date: null,
+    daily_streak: 0,
+    avatar_cfg: { hair: 'spiky', face: 'determined', skin: '#f8d2b8', hairColor: '#1e293b', kitPrimary: '#2563eb', kitSecondary: '#10b981' }
+  };
+
+  let squadList = [
+    { name: '阿倫 (玩家)', pos: 'ST', sho: 64, pas: 56, dri: 64, trust: 70, number: 10, avatar_cfg: { hair: 'parted', face: 'grin', skin: '#eab68e', hairColor: '#78350f', kitPrimary: '#2563eb', kitSecondary: '#10b981' }, equipped: { boots: 'boots_gold', wrist: null, headband: null } },
+    { name: '凱文 (玩家)', pos: 'ST', sho: 60, pas: 55, dri: 61, trust: 61, number: 11, avatar_cfg: { hair: 'curly', face: 'determined', skin: '#7d4a2b', hairColor: '#1e293b', kitPrimary: '#2563eb', kitSecondary: '#10b981' }, equipped: { boots: 'boots_flame', wrist: 'wrist_neon', headband: null } }
+  ];
+
+  let pendingQueue = [];
+  let totalMomentsInMatch = 0;
+
+  function getTodayKey() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  function getYesterdayKey() {
+    const d = new Date(Date.now() - 86400000);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  // 以 last_regen_at 時間戳計算體力回補，並回傳下次恢復剩餘毫秒數
+  function applyTimeRegen(silent = false) {
+    const nowMs = Date.now();
+    let lastMs = new Date(player.last_regen_at || nowMs).getTime();
+    if (Number.isNaN(lastMs)) lastMs = nowMs;
+
+    if (player.stamina >= MAX_STAMINA) {
+      player.stamina = MAX_STAMINA;
+      player.last_regen_at = new Date(nowMs).toISOString();
+      return { remainingMs: REGEN_INTERVAL_MS, isFull: true, gained: 0 };
+    }
+
+    const elapsed = Math.max(0, nowMs - lastMs);
+    const ticks = Math.floor(elapsed / REGEN_INTERVAL_MS);
+    let gained = 0;
+
+    if (ticks > 0) {
+      gained = Math.min(MAX_STAMINA - player.stamina, ticks * REGEN_AMOUNT);
+      player.stamina += gained;
+      const newAnchor = lastMs + ticks * REGEN_INTERVAL_MS;
+      player.last_regen_at = new Date(player.stamina >= MAX_STAMINA ? nowMs : newAnchor).toISOString();
+      if (!silent && gained > 0) {
+        addLog(`⏱️ 時間自然回補：體力 +${gained}（目前 ${player.stamina}/${MAX_STAMINA}）。`, 'log-good');
+      }
+    }
+
+    const remainingMs = Math.max(0, REGEN_INTERVAL_MS - (Date.now() - new Date(player.last_regen_at).getTime()));
+    return { remainingMs, isFull: player.stamina >= MAX_STAMINA, gained };
+  }
+
+  // 防作弊：領取每日獎勵前先從雲端重新拉取最新 last_daily_date 校驗
+  async function claimDailyReward() {
+    const today = getTodayKey();
+    if (sb) {
+      const { data: latest } = await sb.from('players').select('last_daily_date, daily_streak').eq('id', MY_ID).maybeSingle();
+      if (latest) {
+        player.last_daily_date = latest.last_daily_date;
+        player.daily_streak = latest.daily_streak || 0;
+      }
+    }
+
+    if (player.last_daily_date === today) {
+      addLog('⚠️ 系統校驗：今日每日獎勵已領取過，無法重複領取！', 'log-bad');
+      render();
+      return;
+    }
+
+    player.daily_streak = (player.last_daily_date === getYesterdayKey()) ? (player.daily_streak + 1) : 1;
+    player.last_daily_date = today;
+
+    const bonusTp = 3 + (player.daily_streak >= 3 ? 1 : 0);
+    const bonusCash = 30 + (player.daily_streak - 1) * 10;
+    const bonusStamina = 25;
+
+    player.tp += bonusTp;
+    player.cash += bonusCash;
+    player.stamina = Math.min(MAX_STAMINA, player.stamina + bonusStamina);
+
+    addLog(`🎁 領取每日獎勵（連續 ${player.daily_streak} 天）：+${bonusTp} TP、+$${bonusCash}、+${bonusStamina} 體力！`, 'log-gold');
+    await syncToCloud();
+    render();
+  }
+
+  async function syncToCloud() {
+    if (!sb) return;
+    await sb.from('players').upsert({
+      id: player.id,
+      name: player.name,
+      number: player.number,
+      pos: player.pos,
+      club_id: player.club_id,
+      sho: player.sho,
+      pas: player.pas,
+      dri: player.dri,
+      trust: player.trust,
+      tp: player.tp,
+      cash: player.cash,
+      stamina: player.stamina,
+      avatar_cfg: player.avatar_cfg,
+      equipped: player.equipped,
+      owned: player.owned,
+      last_regen_at: player.last_regen_at,
+      last_daily_date: player.last_daily_date,
+      daily_streak: player.daily_streak,
+      updated_at: new Date().toISOString()
+    });
+    await refreshCloudSquad();
+  }
+
+  async function refreshCloudSquad() {
+    if (!sb) return;
+    const { data } = await sb.from('players').select('*').eq('club_id', 'star');
+    if (data && data.length > 0) {
+      squadList = data;
+      render();
+    }
+  }
+
+  async function initCloud() {
+    if (!sb) return;
+    const banner = document.getElementById('conn-banner');
+    banner.classList.remove('offline');
+    document.getElementById('conn-text').innerText = '🟢 已連線至 Supabase：啟用雲端時間校驗、防重複領取與多人同步';
+    document.getElementById('sync-badge').innerText = '雲端校驗：已啟用';
+
+    const { data: existing } = await sb.from('players').select('*').eq('id', MY_ID).maybeSingle();
+    if (existing) {
+      Object.assign(player, existing);
+      applyTimeRegen(true);
+      document.getElementById('creator-screen').style.display = 'none';
+      document.getElementById('game-screen').style.display = 'flex';
+      await refreshCloudSquad();
+      render();
+    }
+
+    sb.channel('public:players_sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, () => refreshCloudSquad())
+      .subscribe();
+  }
+
+  function computeStats(p) {
+    let sho = p.sho, pas = p.pas, dri = p.dri, trust = p.trust;
+    const eq = p.equipped || {};
+    Object.values(eq).forEach(gid => {
+      const g = gearCatalog.find(item => item.id === gid);
+      if (g && g.buff) {
+        sho += g.buff.sho || 0;
+        pas += g.buff.pas || 0;
+        dri += g.buff.dri || 0;
+        trust += g.buff.trust || 0;
+      }
+    });
+    return { sho, pas, dri, trust: Math.min(100, trust), ovr: Math.round((sho + pas + dri) / 3) };
+  }
+
+  function getGearColors(eq) {
+    const o = eq || {};
+    const b = o.boots ? gearCatalog.find(g => g.id === o.boots) : null;
+    const w = o.wrist ? gearCatalog.find(g => g.id === o.wrist) : null;
+    const h = o.headband ? gearCatalog.find(g => g.id === o.headband) : null;
+    return { bootColor: b ? b.color : '#f97316', wristColor: w ? w.color : null, bandColor: h ? h.color : null };
+  }
+
+  function buildCartoonSVG(cfg, number, mode = 'full', gearColors = null) {
+    const viewBox = mode === 'head' ? '55 15 110 115' : '0 0 220 300';
+    const stroke = '#0f172a';
+    const g = gearColors || { bootColor: '#f97316', wristColor: null, bandColor: null };
+
+    let hairBack = '', hairFront = '';
+    if (cfg.hair === 'spiky') {
+      hairFront = `<path d="M72 68 L62 42 L82 52 L92 26 L108 46 L124 24 L132 50 L154 40 L146 68 Q110 56 72 68 Z" fill="${cfg.hairColor}" stroke="${stroke}" stroke-width="3.5" stroke-linejoin="round"/>`;
+    } else if (cfg.hair === 'parted') {
+      hairFront = `<path d="M70 76 Q68 35 110 34 Q152 35 150 76 Q135 52 112 62 Q95 50 70 76 Z" fill="${cfg.hairColor}" stroke="${stroke}" stroke-width="3.5" stroke-linejoin="round"/>`;
+    } else if (cfg.hair === 'curly') {
+      hairBack = `<circle cx="72" cy="64" r="16" fill="${cfg.hairColor}" stroke="${stroke}" stroke-width="3"/><circle cx="148" cy="64" r="16" fill="${cfg.hairColor}" stroke="${stroke}" stroke-width="3"/>`;
+      hairFront = `<path d="M70 66 Q65 34 95 34 Q110 24 128 34 Q155 34 150 66 Q110 52 70 66 Z" fill="${cfg.hairColor}" stroke="${stroke}" stroke-width="3.5" stroke-linejoin="round"/>`;
+    } else {
+      hairFront = `<path d="M74 64 Q76 38 110 38 Q144 38 146 64 Q110 54 74 64 Z" fill="${cfg.hairColor}" stroke="${stroke}" stroke-width="3"/>`;
+    }
+
+    let faceSVG = '';
+    if (cfg.face === 'determined') {
+      faceSVG = `<path d="M84 74 L101 79" stroke="${stroke}" stroke-width="3.5" stroke-linecap="round"/><path d="M136 74 L119 79" stroke="${stroke}" stroke-width="3.5" stroke-linecap="round"/><circle cx="94" cy="84" r="4.5" fill="${stroke}"/><circle cx="126" cy="84" r="4.5" fill="${stroke}"/><path d="M98 103 Q110 99 122 103" fill="none" stroke="${stroke}" stroke-width="3" stroke-linecap="round"/>`;
+    } else if (cfg.face === 'grin') {
+      faceSVG = `<path d="M84 73 Q93 69 101 74" fill="none" stroke="${stroke}" stroke-width="3" stroke-linecap="round"/><path d="M119 74 Q127 69 136 73" fill="none" stroke="${stroke}" stroke-width="3" stroke-linecap="round"/><circle cx="94" cy="83" r="4.5" fill="${stroke}"/><circle cx="126" cy="83" r="4.5" fill="${stroke}"/><path d="M95 99 Q110 112 125 99 Z" fill="#fff" stroke="${stroke}" stroke-width="2.5"/>`;
+    } else {
+      faceSVG = `<path d="M83 72 L102 78" stroke="${stroke}" stroke-width="3.8" stroke-linecap="round"/><path d="M137 72 L118 78" stroke="${stroke}" stroke-width="3.8" stroke-linecap="round"/><circle cx="94" cy="84" r="4.5" fill="${stroke}"/><circle cx="126" cy="84" r="4.5" fill="${stroke}"/><ellipse cx="110" cy="103" rx="11" ry="8" fill="#ef4444" stroke="${stroke}" stroke-width="2.8"/>`;
+    }
+
+    const wristSVG = g.wristColor ? `<rect x="57" y="164" width="14" height="8" rx="3" fill="${g.wristColor}" stroke="${stroke}" stroke-width="2.5"/><rect x="149" y="164" width="14" height="8" rx="3" fill="${g.wristColor}" stroke="${stroke}" stroke-width="2.5"/>` : '';
+    const bandSVG = g.bandColor ? `<rect x="75" y="57" width="70" height="8" rx="3" fill="${g.bandColor}" stroke="${stroke}" stroke-width="2.5"/>` : '';
+    const textColor = cfg.kitPrimary === '#f8fafc' ? '#0f172a' : '#ffffff';
+
+    return `
+      <svg viewBox="${viewBox}" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+        <rect x="82" y="198" width="20" height="45" rx="6" fill="${cfg.skin}" stroke="${stroke}" stroke-width="3.5"/>
+        <rect x="118" y="198" width="20" height="45" rx="6" fill="${cfg.skin}" stroke="${stroke}" stroke-width="3.5"/>
+        <rect x="81" y="226" width="22" height="44" rx="4" fill="#1e293b" stroke="${stroke}" stroke-width="3.5"/>
+        <rect x="117" y="226" width="22" height="44" rx="4" fill="#1e293b" stroke="${stroke}" stroke-width="3.5"/>
+        <path d="M72 270 Q72 260 92 260 L105 260 L105 276 L72 276 Z" fill="${g.bootColor}" stroke="${stroke}" stroke-width="3.5"/>
+        <path d="M115 260 L128 260 Q148 260 148 270 L148 276 L115 276 Z" fill="${g.bootColor}" stroke="${stroke}" stroke-width="3.5"/>
+        <path d="M74 172 L146 172 L152 212 L114 212 L110 196 L106 212 L68 212 Z" fill="#0f172a" stroke="${stroke}" stroke-width="3.5"/>
+        <path d="M68 124 L46 156 L66 178" fill="none" stroke="${cfg.skin}" stroke-width="15" stroke-linecap="round"/>
+        <path d="M68 124 L46 156 L66 178" fill="none" stroke="${stroke}" stroke-width="3.5" stroke-linecap="round"/>
+        <path d="M152 124 L174 156 L154 178" fill="none" stroke="${cfg.skin}" stroke-width="15" stroke-linecap="round"/>
+        <path d="M152 124 L174 156 L154 178" fill="none" stroke="${stroke}" stroke-width="3.5" stroke-linecap="round"/>
+        ${wristSVG}
+        <path d="M68 118 L110 118 L110 176 L72 176 Z" fill="${cfg.kitPrimary}" stroke="${stroke}" stroke-width="3.5"/>
+        <path d="M110 118 L152 118 L148 176 L110 176 Z" fill="${cfg.kitSecondary}" stroke="${stroke}" stroke-width="3.5"/>
+        <text x="90" y="148" font-size="18" font-weight="900" fill="${textColor}" text-anchor="middle">${number}</text>
+        <rect x="100" y="106" width="20" height="16" rx="4" fill="${cfg.skin}" stroke="${stroke}" stroke-width="3.5"/>
+        ${hairBack}
+        <path d="M74 62 Q74 44 110 44 Q146 44 146 62 L144 92 Q144 114 110 114 Q76 114 76 92 Z" fill="${cfg.skin}" stroke="${stroke}" stroke-width="3.5"/>
+        ${faceSVG}${hairFront}${bandSVG}
+      </svg>
+    `;
+  }
+
+  function setCfg(key, val, el) {
+    if (key === 'pos') player.pos = val;
+    else player.avatar_cfg[key] = val;
+    el.parentElement.querySelectorAll('.chip, .swatch').forEach(n => n.classList.remove('active'));
+    el.classList.add('active');
+    updatePreview();
+  }
+
+  function setKit(p, s, el) {
+    player.avatar_cfg.kitPrimary = p;
+    player.avatar_cfg.kitSecondary = s;
+    el.parentElement.querySelectorAll('.chip').forEach(n => n.classList.remove('active'));
+    el.classList.add('active');
+    updatePreview();
+  }
+
+  function updatePreview() {
+    player.name = document.getElementById('inp-name').value.trim() || '無名新星';
+    player.number = Math.max(1, Math.min(99, parseInt(document.getElementById('inp-num').value, 10) || 9));
+    const posMap = { ST: ['前鋒 (ST)', 'FORWARD'], CM: ['中場 (CM)', 'MIDFIELDER'], CB: ['後衛 (CB)', 'DEFENDER'] };
+    document.getElementById('stage-pos').innerText = `${posMap[player.pos][0]} · STAR UNITED`;
+    document.getElementById('stage-banner').innerText = `#${player.number} ${player.name} - ${posMap[player.pos][1]}`;
+    document.getElementById('svg-preview').innerHTML = buildCartoonSVG(player.avatar_cfg, player.number, 'full', getGearColors(player.equipped));
+  }
+
+  async function enterGame() {
+    updatePreview();
+    player.last_regen_at = new Date().toISOString();
+    document.getElementById('creator-screen').style.display = 'none';
+    document.getElementById('game-screen').style.display = 'flex';
+    await syncToCloud();
+    addLog(`歡迎 #${player.number} ${player.name}！體力回補與每日獎勵已啟用雲端時間校驗。`, 'log-gold');
+    render();
+  }
+
+  function switchTab(tab) {
+    document.getElementById('view-room').style.display = tab === 'room' ? 'grid' : 'none';
+    document.getElementById('view-shop').style.display = tab === 'shop' ? 'block' : 'none';
+    document.getElementById('tab-room').classList.toggle('active', tab === 'room');
+    document.getElementById('tab-shop').classList.toggle('active', tab === 'shop');
+  }
+
+  function addLog(msg, cls = '') {
+    const box = document.getElementById('log-box');
+    const div = document.createElement('div');
+    if (cls) div.className = cls;
+    div.innerHTML = `[第${player.round}輪] ${msg}`;
+    box.prepend(div);
+  }
+
+  async function trainHard() {
+    applyTimeRegen(true);
+    if (player.stamina < 25) return;
+    player.stamina -= 25;
+    if (player.stamina < MAX_STAMINA) player.last_regen_at = new Date().toISOString();
+    player.tp += 4;
+    player.cash += 40;
+    addLog('完成魔鬼加練，獲得 +4 TP 與 +$40 薪資。', 'log-good');
+    await syncToCloud();
+    render();
+  }
+
+  async function trainPass() {
+    applyTimeRegen(true);
+    if (player.stamina < 15) return;
+    player.stamina -= 15;
+    if (player.stamina < MAX_STAMINA) player.last_regen_at = new Date().toISOString();
+    player.tp += 2;
+    player.cash += 25;
+    player.trust = Math.min(100, player.trust + 5);
+    addLog('完成戰術合練，獲得 +2 TP、+$25 與 +5 教練信任。', 'log-good');
+    await syncToCloud();
+    render();
+  }
+
+  async function restAction() {
+    applyTimeRegen(true);
+    player.stamina = Math.min(MAX_STAMINA, player.stamina + 35);
+    if (player.stamina >= MAX_STAMINA) player.last_regen_at = new Date().toISOString();
+    addLog('進行物理治療，體力回升 +35。');
+    await syncToCloud();
+    render();
+  }
+
+  async function upgradeStat(key) {
+    if (player.tp < 2) return;
+    player.tp -= 2;
+    player[key] += 1;
+    await syncToCloud();
+    render();
+  }
+
+  async function buyOrEquip(id) {
+    const item = gearCatalog.find(g => g.id === id);
+    if (!item) return;
+    if (!player.owned.includes(id)) {
+      if (player.cash < item.price) return;
+      player.cash -= item.price;
+      player.owned.push(id);
+    }
+    player.equipped[item.slot] = id;
+    addLog(`穿戴了【${item.name}】（${item.buffText}）。`, 'log-gold');
+    await syncToCloud();
+    render();
+  }
+
+  function startMatch() {
+    const stats = computeStats(player);
+    const others = squadList.filter(p => p.id !== MY_ID);
+    const combined = [{ isMe: true, trust: stats.trust, ovr: stats.ovr }, ...others.map(o => {
+      const s = computeStats(o);
+      return { isMe: false, trust: s.trust, ovr: s.ovr };
+    })].sort((a, b) => (b.trust + b.ovr * 0.5) - (a.trust + a.ovr * 0.5));
+    const myRank = combined.findIndex(x => x.isMe);
+    const count = myRank < 2 ? 2 : 1;
+
+    pendingQueue = [];
+    for (let i = 0; i < count; i++) {
+      const m = matchMoments[i % matchMoments.length];
+      const minute = myRank < 2 ? (34 + i * 36) : 78;
+      pendingQueue.push({ minute, moment: m });
+    }
+    totalMomentsInMatch = pendingQueue.length;
+    addLog(`🏟️ 第 ${player.round} 輪比賽開踢！`, 'log-gold');
+    nextMoment();
+  }
+
+  function nextMoment() {
+    if (pendingQueue.length === 0) {
+      document.getElementById('match-modal').style.display = 'none';
+      finishMatch();
+      return;
+    }
+    const current = pendingQueue.shift();
+    const step = totalMomentsInMatch - pendingQueue.length;
+    const stats = computeStats(player);
+
+    document.getElementById('m-minute').innerText = `比賽第 ${current.minute} 分鐘`;
+    document.getElementById('m-progress').innerText = `關鍵時刻 ${step} / ${totalMomentsInMatch}`;
+    document.getElementById('m-title').innerText = current.moment.title;
+    document.getElementById('m-desc').innerText = current.moment.desc;
+
+    const choicesEl = document.getElementById('m-choices');
+    choicesEl.innerHTML = '';
+    current.moment.choices.forEach(c => {
+      const chance = Math.min(95, Math.max(20, 52 + (stats[c.stat] - c.diff)));
+      const btn = document.createElement('button');
+      btn.className = 'choice-card';
+      btn.innerHTML = `
+        <div class="choice-top">
+          <span>${c.label}</span>
+          <span style="color:var(--accent);">成功率 ${chance}%</span>
+        </div>
+        <div class="choice-sub">${c.desc}</div>
+      `;
+      btn.onclick = async () => {
+        if (Math.random() * 100 <= chance) {
+          addLog(`✅ [第${current.minute}分] ${c.onSuccess()}`, 'log-good');
+        } else {
+          addLog(`❌ [第${current.minute}分] ${c.onFail()}`, 'log-bad');
+        }
+        await syncToCloud();
+        render();
+        nextMoment();
+      };
+      choicesEl.appendChild(btn);
+    });
+
+    document.getElementById('match-modal').style.display = 'flex';
+  }
+
+  async function finishMatch() {
+    player.stamina = Math.max(0, player.stamina - 15);
+    player.last_regen_at = new Date().toISOString();
+    player.tp += 2;
+    player.round++;
+    addLog(`第 ${player.round - 1} 輪完賽！獲得 +2 TP，體力恢復計時已重新計算。`, 'log-gold');
+    await syncToCloud();
+    render();
+  }
+
+  function updateRegenDisplay(info) {
+    const el = document.getElementById('regen-status');
+    if (!el) return;
+    if (info.isFull) {
+      el.innerText = '⚡ 體力已滿（100/100），隨時可投入訓練或比賽！';
+      return;
+    }
+    const sec = Math.ceil(info.remainingMs / 1000);
+    el.innerText = `⏱️ 每 60 秒自動恢復 +${REGEN_AMOUNT} 體力｜下次恢復倒數：${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`;
+  }
+
+  function render() {
+    const regenInfo = applyTimeRegen(false);
+    updateRegenDisplay(regenInfo);
+
+    const myStats = computeStats(player);
+    const myColors = getGearColors(player.equipped);
+
+    document.getElementById('topbar-avatar').innerHTML = buildCartoonSVG(player.avatar_cfg, player.number, 'head', myColors);
+    document.getElementById('player-header').innerText = `#${player.number} ${player.name} (${player.pos} · 總評 ${myStats.ovr})`;
+    document.getElementById('round-num').innerText = player.round;
+    document.getElementById('goals-val').innerText = player.goals;
+    document.getElementById('assists-val').innerText = player.assists;
+    document.getElementById('stamina-val').innerText = player.stamina;
+    document.getElementById('trust-val').innerText = myStats.trust;
+    document.getElementById('cash-val').innerText = player.cash;
+    document.getElementById('tp-val').innerText = player.tp;
+
+    const claimedToday = player.last_daily_date === getTodayKey();
+    document.getElementById('streak-val').innerText = player.daily_streak || 0;
+    const dBtn = document.getElementById('btn-daily');
+    dBtn.disabled = claimedToday;
+    dBtn.innerText = claimedToday ? '今日已領取' : '領取每日獎勵';
+
+    const others = squadList.filter(p => p.id !== MY_ID);
+    const allPlayers = [
+      { ...player, isMe: true, computed: myStats, colors: myColors },
+      ...others.map(o => ({ ...o, isMe: false, computed: computeStats(o), colors: getGearColors(o.equipped) }))
+    ].sort((a, b) => (b.computed.trust + b.computed.ovr * 0.5) - (a.computed.trust + a.computed.ovr * 0.5));
+
+    const tbody = document.getElementById('squad-tbody');
+    tbody.innerHTML = '';
+    allPlayers.forEach((p, idx) => {
+      const spot = idx < 2 ? '正選首發' : idx === 2 ? '替補席' : '預備隊';
+      if (p.isMe) {
+        const pill = document.getElementById('spot-pill');
+        pill.innerText = `目前席位：${spot} (第${idx + 1}名)`;
+        pill.className = 'pill ' + (idx < 2 ? 'starter' : idx === 2 ? 'sub' : 'res');
+      }
+      const tr = document.createElement('tr');
+      if (p.isMe) tr.className = 'me-row';
+      tr.innerHTML = `
+        <td><span class="avatar-table">${buildCartoonSVG(p.avatar_cfg, p.number, 'head', p.colors)}</span><strong>#${p.number} ${p.name} ${p.isMe ? '(你)' : ''}</strong></td>
+        <td>${p.pos}</td>
+        <td><strong>${p.computed.ovr}</strong></td>
+        <td>${p.computed.trust}</td>
+        <td style="color:${idx < 2 ? '#34d399' : idx === 2 ? '#fbbf24' : '#94a3b8'}; font-weight:bold;">${spot}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    const attrRows = [
+      { key: 'sho', label: '射門 (SHO)', val: myStats.sho },
+      { key: 'pas', label: '傳球 (PAS)', val: myStats.pas },
+      { key: 'dri', label: '盤帶 (DRI)', val: myStats.dri }
+    ];
+    document.getElementById('attr-box').innerHTML = attrRows.map(a => `
+      <div class="attr-row">
+        <span><strong>${a.label}</strong>：<span style="color:var(--accent);">${a.val}</span></span>
+        <button class="mini-btn" ${player.tp >= 2 ? '' : 'disabled'} onclick="upgradeStat('${a.key}')">+1 (2 TP)</button>
+      </div>
+    `).join('');
+
+    document.getElementById('btn-train-hard').disabled = player.stamina < 25;
+    document.getElementById('btn-train-pass').disabled = player.stamina < 15;
+
+    document.getElementById('shop-grid').innerHTML = gearCatalog.map(item => {
+      const isOwned = player.owned.includes(item.id);
+      const isEq = player.equipped[item.slot] === item.id;
+      let btn = '';
+      if (isEq) btn = `<button class="gear-btn" disabled>✓ 穿戴中</button>`;
+      else if (isOwned) btn = `<button class="gear-btn equip" onclick="buyOrEquip('${item.id}')">穿上裝備</button>`;
+      else btn = `<button class="gear-btn" ${player.cash >= item.price ? '' : 'disabled'} onclick="buyOrEquip('${item.id}')">購買 ($${item.price})</button>`;
+      return `
+        <div class="gear-card ${isEq ? 'equipped' : ''}">
+          <div>
+            <div style="font-size:0.75rem; color:var(--tp); font-weight:bold;">${item.slotLabel}</div>
+            <div style="font-weight:bold; font-size:1rem; margin-top:2px;">${item.name}</div>
+            <div style="font-size:0.84rem; color:#34d399; margin-top:4px;">${item.buffText}</div>
+          </div>
+          ${btn}
+        </div>
+      `;
+    }).join('');
+  }
+
+  setInterval(async () => {
+    if (document.getElementById('game-screen').style.display !== 'none') {
+      const prevStamina = player.stamina;
+      const info = applyTimeRegen(false);
+      updateRegenDisplay(info);
+      if (player.stamina !== prevStamina) {
+        await syncToCloud();
+        render();
+      }
+    }
+  }, 1000);
+
+  updatePreview();
+  initCloud();
+</script>
+</body>
+</html>
